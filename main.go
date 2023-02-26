@@ -2,16 +2,21 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"time"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
-func hello(w http.ResponseWriter, r *http.Request) {
-	resp, err := http.Get("https://api.ipify.org?format=json")
+type server struct {
+	httpClient http.Client
+}
+
+func (s server) hello(c echo.Context) error {
+	resp, err := http.Get("https://ipinfo.io")
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(err.Error()))
-		return
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
 	ip := struct {
@@ -19,15 +24,22 @@ func hello(w http.ResponseWriter, r *http.Request) {
 	}{}
 	err = json.NewDecoder(resp.Body).Decode(&ip)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(err.Error()))
-		return
+		return c.String(http.StatusInternalServerError, err.Error())
 	}
 
-	fmt.Fprintf(w, ip.Ip)
+	return c.String(http.StatusOK, ip.Ip)
 }
 
 func main() {
-	http.HandleFunc("/", hello)
-	http.ListenAndServe(":8090", nil)
+	s := server{
+		httpClient: http.Client{Timeout: 1 * time.Minute},
+	}
+
+	e := echo.New()
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+
+	e.GET("/", s.hello)
+
+	e.Logger.Fatal(e.Start(":8090"))
 }
